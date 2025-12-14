@@ -1,0 +1,1 @@
+To launch the application double click the pdfmerger.exe
