@@ -17,7 +17,7 @@ public class SamplePdfGenerator {
     System.out.println("Sample PDFs created successfully in " + resourcesPath);
   }
 
-  private static void createSamplePdf(File file, String content) throws IOException {
+  public static File createSamplePdf(File file, String content) {
     try (PDDocument doc = new PDDocument()) {
       PDPage page = new PDPage();
       doc.addPage(page);
@@ -27,8 +27,16 @@ public class SamplePdfGenerator {
         contentStream.newLineAtOffset(50, 700);
         contentStream.showText(content);
         contentStream.endText();
+      } catch (IOException e) {
+        e.printStackTrace();
+        System.exit(1);
       }
       doc.save(file);
+
+    } catch (IOException e1) {
+      e1.printStackTrace();
+      System.exit(1);
     }
+    return file;
   }
 }
