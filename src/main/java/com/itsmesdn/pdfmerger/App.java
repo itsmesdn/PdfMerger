@@ -17,6 +17,11 @@ public class App {
   private DefaultListModel<String> fileListModel;
   private JList<String> fileList;
   private JTextField outputField;
+  private JLabel statusLabel;
+  private JButton addButton;
+  private JButton removeButton;
+  private JButton outputButton;
+  private JButton mergeButton;
   private List<File> inputFiles;
 
   public static void main(String[] args) {
@@ -41,10 +46,10 @@ public class App {
     JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
     buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-    JButton addButton = new JButton("Add PDF");
-    JButton removeButton = new JButton("Remove Selected");
-    JButton outputButton = new JButton("Select Output");
-    JButton mergeButton = new JButton("Merge PDFs");
+    addButton = new JButton("Add PDF");
+    removeButton = new JButton("Remove Selected");
+    outputButton = new JButton("Select Output");
+    mergeButton = new JButton("Merge PDFs");
 
     buttonPanel.add(addButton);
     buttonPanel.add(removeButton);
@@ -66,15 +71,22 @@ public class App {
     outputField.setEditable(false);
     outputPanel.add(outputField, BorderLayout.CENTER);
 
+    // Status panel
+    JPanel statusPanel = new JPanel(new BorderLayout());
+    statusPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 10, 10));
+    statusLabel = new JLabel("Ready");
+    statusPanel.add(statusLabel, BorderLayout.WEST);
+
     frame.add(buttonPanel, BorderLayout.NORTH);
     frame.add(scrollPane, BorderLayout.CENTER);
     frame.add(outputPanel, BorderLayout.SOUTH);
+    frame.add(statusPanel, BorderLayout.PAGE_END);
 
     // Action listeners
     addButton.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
-        JFileChooser chooser = new JFileChooser();
+        JFileChooser chooser = new JFileChooser(System.getProperty("user.dir"));
         chooser.setMultiSelectionEnabled(true);
         chooser
             .setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PDF Files", "pdf"));
@@ -85,6 +97,7 @@ public class App {
             inputFiles.add(file);
             fileListModel.addElement(file.getName());
           }
+          statusLabel.setText("✓ Added " + files.length + " file(s)");
         }
       }
     });
@@ -94,8 +107,12 @@ public class App {
       public void actionPerformed(ActionEvent e) {
         int selectedIndex = fileList.getSelectedIndex();
         if (selectedIndex != -1) {
+          String removedFile = fileListModel.get(selectedIndex);
           inputFiles.remove(selectedIndex);
           fileListModel.remove(selectedIndex);
+          statusLabel.setText("✓ Removed: " + removedFile);
+        } else {
+          statusLabel.setText("⚠ Select a file to remove");
         }
       }
     });
@@ -103,13 +120,18 @@ public class App {
     outputButton.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
-        JFileChooser chooser = new JFileChooser();
+        JFileChooser chooser = new JFileChooser(System.getProperty("user.dir"));
         chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         chooser
             .setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PDF Files", "pdf"));
         int result = chooser.showSaveDialog(frame);
         if (result == JFileChooser.APPROVE_OPTION) {
-          outputField.setText(chooser.getSelectedFile().getAbsolutePath());
+          String selectedFileName = chooser.getSelectedFile().getAbsolutePath();
+          if (!selectedFileName.endsWith(".pdf")) {
+            selectedFileName += ".pdf";
+          }
+          outputField.setText(selectedFileName);
+          statusLabel.setText("✓ Output file selected");
         }
       }
     });
@@ -118,20 +140,62 @@ public class App {
       @Override
       public void actionPerformed(ActionEvent e) {
         if (inputFiles.isEmpty()) {
-          JOptionPane.showMessageDialog(frame, "Please select input PDFs.");
+          statusLabel.setText("✗ Error: No input files selected");
+          JOptionPane.showMessageDialog(frame, "Please select input PDFs.", "No Files",
+              JOptionPane.WARNING_MESSAGE);
           return;
         }
         String outputPath = outputField.getText();
         if (outputPath.isEmpty()) {
-          JOptionPane.showMessageDialog(frame, "Please select output file.");
+          statusLabel.setText("✗ Error: No output file selected");
+          JOptionPane.showMessageDialog(frame, "Please select output file.", "No Output",
+              JOptionPane.WARNING_MESSAGE);
           return;
         }
-        try {
-          mergePDFs(inputFiles, new File(outputPath));
-          JOptionPane.showMessageDialog(frame, "PDFs merged successfully!");
-        } catch (IOException ex) {
-          JOptionPane.showMessageDialog(frame, "Error merging PDFs: " + ex.getMessage());
-        }
+
+        // Disable all buttons during merge
+        addButton.setEnabled(false);
+        removeButton.setEnabled(false);
+        outputButton.setEnabled(false);
+        mergeButton.setEnabled(false);
+        statusLabel.setText("⏳ Merging PDFs...");
+
+        // Execute merge in background thread
+        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
+          @Override
+          protected Void doInBackground() throws Exception {
+            mergePDFs(inputFiles, new File(outputPath));
+            return null;
+          }
+
+          @Override
+          protected void done() {
+            try {
+              get();
+              statusLabel.setText("✓ PDFs merged successfully!");
+              JOptionPane.showMessageDialog(frame, "PDFs merged successfully!", "Success",
+                  JOptionPane.INFORMATION_MESSAGE);
+
+              // Auto-clear fields after successful merge
+              inputFiles.clear();
+              fileListModel.clear();
+              outputField.setText("");
+
+            } catch (Exception ex) {
+              statusLabel.setText("✗ Error: " + ex.getMessage());
+              JOptionPane.showMessageDialog(frame, "Error merging PDFs: " + ex.getMessage(),
+                  "Merge Error", JOptionPane.ERROR_MESSAGE);
+            } finally {
+              // Re-enable buttons after merge completes
+              addButton.setEnabled(true);
+              removeButton.setEnabled(true);
+              outputButton.setEnabled(true);
+              mergeButton.setEnabled(true);
+            }
+          }
+        };
+
+        worker.execute();
       }
     });
 
